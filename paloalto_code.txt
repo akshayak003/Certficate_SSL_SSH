@@ -1,0 +1,304 @@
+public object paloaltocertdetails(string strcmd,dynamic serviceAcc) {
+string userName=serviceAcc.UserName;
+string passWord=serviceAcc.Password;
+
+//strcmd="show sslmgr-store config-certificate-info";
+
+OE_LogWriter.OE_LogInfo(string.Format("Started getting Paloalto Certificate"));
+string con = GetCommonValues.GetValue(System.Configuration.ConfigurationManager.AppSettings["ConnectionString"].ToString());
+
+OE_DBFunctions db = new OE_DBFunctions(con, DatabaseTypes.MSSQL);
+
+DataTable dt=null;
+string AssetName = string.Empty;
+int ID = 0;
+try{
+ dt = db.OE_GetDataTable(string.Format("[usp_get_OE_GetAssetDetails] {0},'{1}'",2,"Paloalto"));
+
+                if(dt != null && dt.Rows.Count > 0)
+                {
+                    foreach(DataRow  dr in dt.Rows)
+                    {
+                         AssetName = dr["AssetName"].ToString();
+                         ID = int.Parse(dr["ID"].ToString());
+                         db.OE_ExecuteNonQuery("UPDATE OE_Certificate SET isDeleted=1 WHERE AssetID="+ID);
+                         
+                         OE_LogWriter.OE_LogInfo(string.Format("Started getting Paloalto Certificate for the server {0}",AssetName));
+                         GetCertDetail(ID,AssetName, userName, passWord, strcmd,db);
+                    }
+                }
+}
+catch(Exception Ex)
+{
+    string error=Ex.Message;
+     OE_LogWriter.OE_LogError(string.Format("Failed to get Paloalto certificate in Paloaltocertdetails(): {0} ",error),Ex);
+}
+
+return "";
+
+}
+public void GetCertDetail(int serverID,string HostName,string userName,string passWord,string strCmd,OE_DBFunctions db) 
+{
+    try{
+       // OE_LogWriter.OE_LogInfo(string.Format("inside try block"));
+        TCS.CBO.OneEngine.Standard.OE_SSHConnections sshConnection = new TCS.CBO.OneEngine.Standard.OE_SSHConnections();
+        Renci.SshNet.SshClient ssh = null;
+        ssh = sshConnection.OE_IntiateSSHConnectionWithoutKey(userName, passWord, HostName); 
+        if(ssh!=null)
+        { 
+           // OE_LogWriter.OE_LogInfo(string.Format("Connection Status  {0}",serverIP));       
+        string Keyword =string.Empty; 
+        var outp1 =propmtchecking(ssh, "svc_prd_oneeng_net@", 3000);
+
+        if (outp1.lines != null)
+        {
+            foreach (var lines in outp1.lines)
+            {
+                if (lines.Contains("svc_prd_oneeng_net@"))
+                {
+                    Keyword = lines.ToString();
+                    Keyword = Keyword.Replace("("," ").Replace(")","");
+                }
+            }
+        }        
+        
+       var strCommandOutPut = StreamSSHMultiCommand(ssh,strCmd,Keyword,3000);
+       
+       string serialNumber=string.Empty;
+       string fingerprint=string.Empty;
+       string issuer= string.Empty;
+       string cname= string.Empty;
+       string exp= string.Empty;    
+       DateTime expDate=System.DateTime.Now;
+        string[] expiryDate=null;
+        string expDateTemp= string.Empty;
+       
+       if(strCommandOutPut.lines!=null)
+       {         
+        foreach(var details in strCommandOutPut.lines)
+        {         
+      string[] allCertDetails = details.Split(new string[] {"serial number:"}, StringSplitOptions.None);   
+      foreach(string cert in  allCertDetails)
+      {
+        // OE_LogWriter.OE_LogInfo(string.Format("Detailss  :{0}",cert));
+        string[] opLineArray=null;
+        if(cert!="")
+        {
+        try{
+            opLineArray=cert.Split('\n');
+             foreach(string linee in opLineArray)
+             {
+                // OE_LogWriter.OE_LogInfo(string.Format("Detailss  :{0}",linee));
+                if(linee.Contains("        db-serialno:"))
+                {
+                  serialNumber = linee.Replace("        db-serialno: ","").TrimEnd();                
+                  OE_LogWriter.OE_LogInfo(string.Format("SerialNumber:{0}",serialNumber));
+                }
+                 else if(linee.Contains("        issuer:"))
+                {
+                  issuer = linee.Replace("        issuer: ","").TrimEnd();                  
+                  OE_LogWriter.OE_LogInfo(string.Format("Issued by:{0}",issuer));
+                }
+                else if(linee.Contains("        issuer-subjecthash:"))
+                {
+                  fingerprint = linee.Replace("        issuer-subjecthash: ","").TrimEnd();                  
+                  OE_LogWriter.OE_LogInfo(string.Format("FingerPrint:{0}",fingerprint));
+                }
+                 else if(linee.Contains("        db-name:"))
+                {
+                  cname = linee.Replace("        db-name: ","").TrimEnd();                  
+                  OE_LogWriter.OE_LogInfo(string.Format("Cert_Name:{0}",cname));
+                }
+                else if(linee.Contains("        db-exp-date:"))
+                {
+                  exp = linee.Replace("        db-exp-date: ","").TrimEnd();
+                  expiryDate=exp.Split('(');
+                  expDateTemp = expiryDate[1].Replace(")","").Replace("  "," ");
+                  OE_LogWriter.OE_LogInfo(string.Format("TempDate:{0}",expDateTemp));
+
+                //  res = "" + exp.Substring(14);
+                //  res1 = res.Replace(")","");
+                //  res2 = res1.Replace("  "," ");
+                  expDate = DateTime.ParseExact(expDateTemp, "MMM %d HH:mm:ss yyyy 'GMT'",System.Globalization.CultureInfo.InvariantCulture);
+                  OE_LogWriter.OE_LogInfo(string.Format("Expiry:{0}",expDate));
+                }
+             }
+              //Insert into DB
+    if(!(String.IsNullOrEmpty(serialNumber)))
+    {
+        string q=string.Format("[usp_Ins_Upd_OE_NMIC_Paloalto_Certificate] {0},'{1}','{2}','{3}','{4}','{5}','{6}','{7}'",serverID,cname,expDate,issuer,fingerprint,serialNumber,HostName,expDateTemp);
+          OE_LogWriter.OE_LogInfo(string.Format("quesry: {0}",q));
+        db.OE_ExecuteNonQuery(string.Format("[usp_Ins_Upd_OE_NMIC_Paloalto_Certificate] {0},'{1}','{2}','{3}','{4}','{5}','{6}','{7}'",serverID,cname,expDate,issuer,fingerprint,serialNumber,HostName,expDateTemp));
+    }
+        }
+        catch(Exception E) 
+        {
+         OE_LogWriter.OE_LogError("Failed to read and Paloalto certificate in GetCertDetail()",E);
+        }
+        }
+
+      }
+         
+       }
+    }
+        }
+        else
+        {
+            OE_LogWriter.OE_LogInfo(string.Format("SSH is null"));
+            string q=string.Format("INSERT INTO OE_Certificate_ServerException(AssetID,AssetName,ExceptionReason,ServerType) VALUES (" + serverID + ",'" + HostName + "','Failed to connect Server','Paloalto')");
+           // OE_LogWriter.OE_LogInfo(string.Format("Inser Query:{0}",q));
+            db.OE_ExecuteNonQuery("INSERT INTO OE_Certificate_ServerException(AssetID,AssetName,ExceptionReason,ServerType) VALUES (" + serverID + ",'" + HostName + "','Failed to connect Server','Paloalto')");
+        }
+ }
+ catch(Exception ex)
+ {
+      string msg = string.Format("Failed to connect server",ex.ToString());
+     OE_LogWriter.OE_LogError(msg, ex);
+ }
+}
+
+public ExpectedResult StreamSSHMultiCommand(SshClient ssh, string cmd, string keyword, int sleepTime = 0) 
+        {
+            OE_LogWriter.OE_LogInfo("Inside StreamSSHMultiCommand");   
+
+            var result = new ExpectedResult();
+            ShellStream stream = null;
+            try
+            {               
+                stream = ssh.CreateShellStream(string.Empty, 80, 100, 800, 600, 1024);
+                StreamReader streamReader = new StreamReader(stream);
+                StreamWriter streamWriter = new StreamWriter(stream);
+                streamWriter.AutoFlush = true;                
+                while (stream.Length == 0)
+                    System.Threading.Thread.Sleep(1000);
+                var r1 = getExpectedLines(streamReader, keyword);
+                if (r1.lines != null)
+                {
+                    var r2 = TypeCommand(streamReader, streamWriter, "set cli pager off", keyword, 3000);
+
+                    int curSleepTime = 1000;
+                    if (sleepTime > 0)
+                        curSleepTime = sleepTime;
+
+                    streamWriter.Write(cmd + "\n");
+                    while (streamReader.BaseStream.Length == 0)
+                        System.Threading.Thread.Sleep(curSleepTime);
+                    result = getExpectedLines(streamReader, keyword);
+                  //  OE_LogWriter.OE_LogInfo(string.Format("Result: {0}", cmd));   
+                    if (result.lines != null)
+                    {
+                    }
+                    else
+                    {
+                        return result;
+                    }
+                }
+                Logout(stream, streamWriter);
+            }
+            catch (Exception ex)
+            {
+                string msg = string.Format("No data",ex.ToString());
+                OE_LogWriter.OE_LogError(msg, ex);
+                return result;
+                stream.Dispose();
+            }
+            finally
+            {
+                stream.Dispose();
+            }
+            return result;
+        }
+  public struct ExpectedResult
+        {
+            public List<string> lines;
+        }
+
+        static ExpectedResult getExpectedLines(StreamReader streamReader, string keyword)
+        {
+            var result = new ExpectedResult();
+            result.lines = new List<string>();
+            var flag = true;
+            while (flag)
+            {
+                System.Threading.Thread.Sleep(500);
+                var output0 = streamReader.ReadToEnd();
+              //  List<string> lines = output0.Replace("\r\n", "\n").Split(new[] { '\n', '\r' }).Where(e => e != "").ToList();
+                List<string> lines = output0.Replace("\r\n", "\n").Split(new string[] {"    serial number:"}, StringSplitOptions.None).ToList();
+              //  OE_LogWriter.OE_LogInfo(string.Format("COUNT: {0}", lines.Count.ToString()));  
+               string Keyword2=output0.Replace("("," ");
+                result.lines = result.lines.Concat(lines).ToList();
+              //  bool r = Regex.IsMatch(Keyword2, keyword);
+              if(Keyword2.Contains("svc_prd_oneeng_net@")){
+                break;
+              }
+
+              //  if (r == true)
+                //    break;
+                System.Threading.Thread.Sleep(500);
+            }
+            return result;
+        }
+
+        static void PrintLines(List<string> lines)
+        {
+            if (lines == null || lines.Count == 0)
+                return;         
+        }
+
+static ExpectedResult TypeCommand(StreamReader streamReader, StreamWriter streamWriter, string command, string keyword, int sleepTime = 0)
+        {
+            int curSleepTime = 500;
+            if (sleepTime > 0)
+                curSleepTime = sleepTime;
+
+            streamWriter.Write(command + "\n");
+            while (streamReader.BaseStream.Length == 0)
+                System.Threading.Thread.Sleep(curSleepTime);
+            var r = getExpectedLines(streamReader, keyword);
+            PrintLines(r.lines);  
+            return r;
+        }
+ static void Logout(ShellStream shellStream, StreamWriter streamWriter)
+        {
+            streamWriter.Write("exit\n");
+            System.Threading.Thread.Sleep(2000);
+            shellStream.Dispose();
+        }
+
+public ExpectedResult propmtchecking(SshClient ssh, string keyword,int sleepTime = 0)
+        {
+            var result = new ExpectedResult();
+            result.lines = new List<string>();
+            ShellStream stream = null;
+            try
+            {
+                stream = ssh.CreateShellStream(string.Empty, 80, 24, 800, 600, 1024);
+                StreamReader streamReader = new StreamReader(stream);
+                StreamWriter streamWriter = new StreamWriter(stream);
+                streamWriter.AutoFlush = true;
+                while (stream.Length == 0)
+                System.Threading.Thread.Sleep(1000);
+                var flag = true;
+                while (flag)
+                {
+                    var output0 = streamReader.ReadToEnd();
+                   // OE_LogWriter.OE_LogInfo(string.Format("propmtchecking: {0}", output0)); 
+                    List<string> lines = output0.Replace("\r\n", "\n").Split(new[] { '\n', '\r' }).Where(e => e != "").ToList();
+                    result.lines = result.lines.Concat(lines).ToList();
+               // OE_LogWriter.OE_LogInfo(string.Format("propmtcheck_KEYWORD: {0}", keyword)); 
+
+                  if( output0.Contains( keyword))
+                    {
+                        break;
+                    }
+                    System.Threading.Thread.Sleep(500);
+                }
+                Logout(stream, streamWriter);
+            }
+            catch
+            {
+                stream.Dispose();
+            }
+           
+            return result;
+        }

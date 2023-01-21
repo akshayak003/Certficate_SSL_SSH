@@ -1,0 +1,161 @@
+public object linuxcertdetails(string strcmd,dynamic serviceAcc) {
+string userName=serviceAcc.UserName;
+string passWord=serviceAcc.Password;
+
+string cert_command = "keytool -printcert -v -file ";
+
+OE_LogWriter.OE_LogInfo(string.Format("command:{0}",strcmd));
+
+OE_LogWriter.OE_LogInfo(string.Format("Started getting Linux Certificate"));
+string con = GetCommonValues.GetValue(System.Configuration.ConfigurationManager.AppSettings["ConnectionString"].ToString());
+
+OE_DBFunctions db = new OE_DBFunctions(con, DatabaseTypes.MSSQL);
+
+DataTable dt=null;
+string AssetName = string.Empty;
+int ID = 0;
+try{
+ dt = db.OE_GetDataTable(string.Format("[usp_get_OE_GetAssetDetails] {0},'{1}'",3,"Linux"));
+
+                if(dt != null && dt.Rows.Count > 0)
+                {
+                    foreach(DataRow  dr in dt.Rows)
+                    {
+                         AssetName = dr["AssetName"].ToString();
+                         ID = int.Parse(dr["ID"].ToString());
+                         db.OE_ExecuteNonQuery("UPDATE OE_Certificate SET isDeleted=1 WHERE AssetID="+ID);
+                         
+                         OE_LogWriter.OE_LogInfo(string.Format("Started getting Linux Certificate for the server {0}",AssetName));
+                         GetCertDetail(ID,AssetName, userName, passWord, strcmd,cert_command,db);
+                    }
+                }
+}
+catch(Exception Ex)
+{
+    string error=Ex.Message;
+     OE_LogWriter.OE_LogError(string.Format("Failed to get Linux certificate in CiscocertDetails(): {0} ",error),Ex);
+}
+
+return "";
+
+
+}
+public void GetCertDetail(int serverID,string HostName,string userName,string passWord,string strCmd,string certCmd,OE_DBFunctions db) 
+{
+try{
+ OE_LogWriter.OE_LogInfo("Connecting to server");
+string expiration =string.Empty;
+string serialNumber=string.Empty;
+string fingerprint=string.Empty;
+string issuer= string.Empty;
+string commonName= string.Empty;
+//string res= string.Empty;
+DateTime dt=System.DateTime.Now;
+DateTime date=System.DateTime.Now;
+string[] expiryDate=null;
+string expDateTemp =string.Empty;
+
+//   OE_LogWriter.OE_LogInfo(string.Format("inside try block"));
+        TCS.CBO.OneEngine.Standard.OE_SSHConnections sshConnection = new TCS.CBO.OneEngine.Standard.OE_SSHConnections();
+        Renci.SshNet.SshClient ssh = null;
+       // OE_LogWriter.OE_LogInfo(string.Format("inside try processing"));
+        string certinfo = string.Empty;
+        string certindividual = string.Empty;
+        ssh = sshConnection.OE_IntiateSSHConnectionWithoutKey(userName, passWord, HostName);        
+         OE_LogWriter.OE_LogInfo(string.Format("Connecting to SSH"));    
+        OE_LogWriter.OE_LogInfo(string.Format("Connected to SSH"+ssh));
+        if(ssh!=null)
+        {
+            OE_LogWriter.OE_LogInfo(string.Format("SSH is not null"));
+             certinfo = sshConnection.OE_ExecuteSSHCommandWithoutTimeSpan(strCmd, ssh); 
+
+        string[] opLineArray=certinfo.Split('\n');
+      //  OE_LogWriter.OE_LogInfo(string.Format("all cert details:{0}",opLineArray));
+        string[] certDetails=null;
+ foreach(string cert in  opLineArray)
+     {
+         if(cert!="")
+          {  
+                  certindividual = sshConnection.OE_ExecuteSSHCommandWithoutTimeSpan(certCmd+cert, ssh);
+                  certDetails=certindividual.Split('\n');
+                  foreach(string details in  certDetails)
+                  {
+                // OE_LogWriter.OE_LogInfo(string.Format("Certificate details new line:{0}",details));
+                      if(details.Contains("Owner: "))
+                      {
+                       commonName = details.Replace("Owner: ","").TrimEnd();                
+                       OE_LogWriter.OE_LogInfo(string.Format("Certificate Name:{0}",commonName));
+                      }
+                      else if(details.Contains("Issuer: "))
+                      {
+                         issuer =  details.Replace("Issuer: ","").TrimEnd();
+                         OE_LogWriter.OE_LogInfo(string.Format("Issuer:{0}",issuer));
+                      }
+                      else if(details.Contains("Serial number: "))
+                      {
+                         serialNumber =  details.Replace("Serial number: ","").TrimEnd();
+                         OE_LogWriter.OE_LogInfo(string.Format("SerialNumber:{0}",serialNumber));
+                      }
+                       else if(details.Contains("Valid from: "))
+                      {
+                         expiration = details.Replace("Valid from: ","").TrimEnd();                         
+                        expiryDate = expiration.Split(new string[] {"until: "}, StringSplitOptions.None);
+                        expDateTemp = expiryDate[1].Replace("  "," ");
+                         OE_LogWriter.OE_LogInfo(string.Format("expDateTemp:{0}",expDateTemp)); 
+                          if(expDateTemp.Contains("CST"))
+                          {
+                              dt= DateTime.ParseExact(expDateTemp, "ddd MMM dd HH:mm:ss 'CST' yyyy", System.Globalization.CultureInfo.InvariantCulture);
+                              date = TimeZoneInfo.ConvertTimeToUtc(dt, TimeZoneInfo.Local);
+                              OE_LogWriter.OE_LogInfo(string.Format("Expiry Dtae:{0}",date));
+                          }
+                          if(expDateTemp.Contains("CDT"))
+                          {
+                              dt= DateTime.ParseExact(expDateTemp, "ddd MMM dd HH:mm:ss 'CDT' yyyy", System.Globalization.CultureInfo.InvariantCulture);
+                              date = TimeZoneInfo.ConvertTimeToUtc(dt, TimeZoneInfo.Local);
+                              OE_LogWriter.OE_LogInfo(string.Format("Expiry Dtae:{0}",date));
+                          }   
+                        
+                      }
+                       else if(details.Contains("SHA1:"))
+                       {
+                         fingerprint = details.Replace("SHA1:","").TrimStart();
+                         OE_LogWriter.OE_LogInfo(string.Format("fingerprint:{0}",fingerprint));
+                       }          
+                    }              
+
+                  }
+                  
+          if(serialNumber!="")
+          {
+           string q=string.Format("[usp_Ins_Upd_OE_NMIC_Linux_Certificate] {0},'{1}','{2}','{3}','{4}','{5}','{6}','{7}'",serverID,commonName,date,issuer,fingerprint,serialNumber,HostName,expDateTemp);
+            OE_LogWriter.OE_LogInfo(string.Format("quesry: {0}",q));
+           db.OE_ExecuteNonQuery(string.Format("[usp_Ins_Upd_OE_NMIC_Linux_Certificate] {0},'{1}','{2}','{3}','{4}','{5}','{6}','{7}'",serverID,commonName,date,issuer,fingerprint,serialNumber,HostName,expDateTemp));
+          }         
+     }  
+     sshConnection.OE_CloseSSHConnection(ssh);
+        
+        }
+        else
+        {
+            OE_LogWriter.OE_LogInfo(string.Format("SSH is null"));
+            string q=string.Format("INSERT INTO OE_Certificate_ServerException(AssetID,AssetName,ExceptionReason,ServerType) VALUES (" + serverID + ",'" + HostName + "','Failed to connect Server','Linux')");
+            OE_LogWriter.OE_LogInfo(string.Format("Inser Query:{0}",q));
+            db.OE_ExecuteNonQuery("INSERT INTO OE_Certificate_ServerException(AssetID,AssetName,ExceptionReason,ServerType) VALUES (" + serverID + ",'" + HostName + "','Failed to connect Server','Linux')");
+        }
+
+        
+        
+      //  OE_LogWriter.OE_LogInfo(string.Format("inside try processing 1"+ssh));     
+       // OE_LogWriter.OE_LogInfo(string.Format("inside try processing 2"+certinfo));
+       
+}
+    catch(Exception EE)
+    {
+        string error=EE.Message;
+        OE_LogWriter.OE_LogError(string.Format("Failed to get certificate in GetCertDetail() :{0}",error),EE);
+    } 
+    
+}
+
+
+

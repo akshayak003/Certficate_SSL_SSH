@@ -1,0 +1,80 @@
+$sqlConnection = new-object System.Data.SqlClient.SqlConnection
+    $sqlConnection.ConnectionString = 'Data Source=com-w-mssqls-01.nmicore.com;Initial Catalog=TCS_OneEngineDB;User ID=svc_oneengine;Password=System@123;Connect Timeout=30;'
+  
+    $sqlConnection.Open()
+   $sqlCommand = new-object System.Data.SqlClient.SqlCommand
+   $dataTable=New-Object System.Data.DataTable
+   $certCredTable=New-Object System.Data.DataTable
+   $sqlAdapter= New-Object System.Data.SqlClient.SqlDataAdapter  
+
+    $sqlCommand.CommandTimeout = 120
+    $sqlCommand.Connection = $sqlConnection
+     $certCred = "usp_get_OE_ServiceAccountDetails 1";
+    $SqlCommand.CommandText = $certCred;
+
+ $sqlAdapter.SelectCommand=$SqlCommand;
+ $sqlAdapter.Fill($certCredTable);
+ Foreach($rows in $certCredTable)
+ {
+      $ServiceAccUserName=$rows.UserName
+     $ServiceAccPassword=$rows.Password
+ } 
+ 
+$AssemblyPath = "C:\TCS\OneEngineV1.0\WorkflowEngine\System.Mvc.dll"
+$obj = [System.Reflection.Assembly]::LoadFile($AssemblyPath)
+$DyptPassword=[System.Mvc.GetCommonValues]::GetValue($ServiceAccPassword)
+
+$SqlQuery = "SELECT ID,AssetName from OE_Certificate_Assets WHERE AssetTypeID=1 AND IsDeleted=0";
+
+$SqlCommand.CommandText = $SqlQuery;
+
+ $sqlAdapter.SelectCommand=$SqlCommand;
+ $sqlAdapter.Fill($dataTable);
+ Foreach($row in $datatable)
+ {
+      $AssetID=$row.ID
+     $ServerName=$row.AssetName
+ try{
+     $Password = ConvertTo-SecureString -String $DyptPassword -AsPlainText -Force
+$CredObject = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $ServiceAccUserName,$Password
+$Result = Invoke-Command -Computername $ServerName -credential $CredObject -UseSSL -ScriptBlock{
+GCI -path Cert:\LocalMachine -recurse | where-object {$_.PSISContainer -eq $False } | select HasPrivateKey,Issuer,IssuerName,NotAfter,NotBefore,PrivateKey,PublicKey,RawData,SerialNumber,SignatureAlgorithm,Subject,SubjectName,Thumbprint,Version
+} -ErrorAction Stop
+#$Result[0].ToString()
+$UpdQuery="UPDATE OE_Certificate SET isDeleted=1 WHERE AssetID="+$AssetID 
+ $sqlCommand.CommandText= $UpdQuery 
+ $sqlCommand.ExecuteNonQuery()
+
+foreach($arr in $Result)
+{
+
+$ExpiryDate=$arr.NotAfter
+       $Subject=$arr.Subject        
+       $Issuer=$arr.Issuer
+       $IssuerName=$arr.IssuerName
+       $Thumbprint=$arr.Thumbprint
+       $SerialNumber=$arr.SerialNumber
+       $PSComputerName=$arr.PSComputerName
+       $SignatureAlgorithm=$arr.SignatureAlgorithm
+       $Version=$arr.Version
+     
+        $query="EXEC usp_Ins_Upd_OE_NMIC_Certificate $AssetID,'$Subject','$ExpiryDate','$Issuer','$IssuerName','$Thumbprint','$SerialNumber','$PSComputerName','$SignatureAlgorithm','$Version'"
+    # $query
+    $sqlCommand.CommandText= $query #"EXEC usp_Ins_Upd_OE_NMIC_Certificate $AssetID,$Result[$i].Subject,'$ExpiryDate',$Result[$i].Issuer,$Result[$i].IssuerName,$Result[$i].Thumbprint,$Result[$i].SerialNumber,$Result[$i].PSComputerName,$Result[$i].SignatureAlgorithm,$Result[$i].Version"
+    $result = $sqlCommand.ExecuteNonQuery()
+   
+}
+
+
+}
+catch 
+{
+    $ExpQuery="INSERT INTO OE_Certificate_ServerException(AssetID,AssetName,ExceptionReason,ServerType) VALUES ($AssetID,'$ServerName','$_.Exception','Windows')"
+ $sqlCommand.CommandText= $ExpQuery 
+ $sqlCommand.ExecuteNonQuery()
+}
+}
+
+ $sqlCommand.Dispose();
+$SqlConnection.Close();
+$SqlConnection.Dispose();

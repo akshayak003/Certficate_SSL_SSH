@@ -1,0 +1,142 @@
+public object ciscocertdetails(string strcmd,dynamic serviceAcc) {
+    
+string userName=serviceAcc.UserName;
+string passWord=serviceAcc.Password;
+//strcmd ="moquery -c pki.FabricNodeSSLCertificate";
+
+
+OE_LogWriter.OE_LogInfo(string.Format("command:{0}",strcmd));
+
+OE_LogWriter.OE_LogInfo(string.Format("Started getting Cisco Certificate"));
+string con = GetCommonValues.GetValue(System.Configuration.ConfigurationManager.AppSettings["ConnectionString"].ToString());
+
+OE_DBFunctions db = new OE_DBFunctions(con, DatabaseTypes.MSSQL);
+
+DataTable dt=null;
+string AssetName = string.Empty;
+int ID = 0;
+try{
+ dt = db.OE_GetDataTable(string.Format("[usp_get_OE_GetAssetDetails] {0},'{1}'",2,"Cisco"));
+
+                if(dt != null && dt.Rows.Count > 0)
+                {
+                    foreach(DataRow  dr in dt.Rows)
+                    {
+                         AssetName = dr["AssetName"].ToString();
+                         ID = int.Parse(dr["ID"].ToString());
+                         db.OE_ExecuteNonQuery("UPDATE OE_Certificate SET isDeleted=1 WHERE AssetID="+ID);
+                         
+                         OE_LogWriter.OE_LogInfo(string.Format("Started getting Cisco Certificate for the server {0}",AssetName));
+                         GetCertDetail(ID,AssetName, userName, passWord, strcmd,db);
+                    }
+                }
+}
+catch(Exception Ex)
+{
+    string error=Ex.Message;
+     OE_LogWriter.OE_LogError(string.Format("Failed to get Cisco certificate in CiscocertDetails(): {0} ",error),Ex);
+}
+
+return "";
+
+
+}
+public void GetCertDetail(int serverID,string HostName,string userName,string passWord,string strCmd,OE_DBFunctions db) 
+{
+try{
+ 
+
+ OE_LogWriter.OE_LogInfo("Connecting to server");
+
+
+string validityNotAfter =string.Empty;
+string serialNumber=string.Empty;
+string fingerprint=string.Empty;
+string issuer= string.Empty;
+string subjectKeyIdentifier = string.Empty;
+string dN=string.Empty;
+string[] opLineArray=null;
+DateTime expiryDate=System.DateTime.Now;
+
+OE_LogWriter.OE_LogInfo(string.Format("inside try block"));
+        TCS.CBO.OneEngine.Standard.OE_SSHConnections sshConnection = new TCS.CBO.OneEngine.Standard.OE_SSHConnections();
+        Renci.SshNet.SshClient ssh = null;
+        OE_LogWriter.OE_LogInfo(string.Format("inside try processing"));
+        string strCommandOutPut = string.Empty;
+        ssh = sshConnection.OE_IntiateSSHConnectionWithoutKey(userName, passWord, HostName);
+        OE_LogWriter.OE_LogInfo(string.Format("inside try processing 1"));
+        strCommandOutPut = sshConnection.OE_ExecuteSSHCommandWithoutTimeSpan(strCmd, ssh);
+        sshConnection.OE_CloseSSHConnection(ssh);
+        OE_LogWriter.OE_LogInfo(string.Format("inside try processing 2"));
+        //  OE_LogWriter.OE_LogInfo(string.Format(strCommandOutPut));
+        string[] allCertDetails = strCommandOutPut.Split(new string[] {"# pki.FabricNodeSSLCertificate"}, StringSplitOptions.None);   
+    
+foreach(string cert in  allCertDetails)
+{
+    opLineArray=null;
+    if(cert!="")
+    {
+   try{
+     opLineArray=cert.Split('\n');
+   // OE_LogWriter.OE_LogInfo(string.Format("Detailss  :{0}",cert));
+    //foreach line check if the starting is from the strings in key array
+     foreach(string line in opLineArray)
+            {
+                if(line.Contains("serialNumber                   :"))
+                {
+                  serialNumber = line.Replace("serialNumber                   : ","").TrimEnd();                
+                  OE_LogWriter.OE_LogInfo(string.Format("SerialNumber:{0}",serialNumber));
+                }
+               else if(line.Contains("dn                             :"))
+                {
+                  dN = line.Replace("dn                             : ","").TrimEnd();                
+                  OE_LogWriter.OE_LogInfo(string.Format("Certificate Name:{0}",dN));
+                }
+               else if(line.Contains("issuer                         :"))
+                {
+                  issuer = line.Replace("issuer                         : ","").TrimEnd();                  
+                  OE_LogWriter.OE_LogInfo(string.Format("Issued by:{0}",issuer));
+                }
+                  else if(line.Contains("subjectKeyIdentifier           :"))
+                {
+                  subjectKeyIdentifier = line.Replace("subjectKeyIdentifier           : ","").TrimEnd();                  
+                  OE_LogWriter.OE_LogInfo(string.Format("Thumbprint:{0}",subjectKeyIdentifier));
+                }
+                else if(line.Contains("validityNotAfter               :"))
+                {
+                  validityNotAfter  = line.Replace("validityNotAfter               : ","").TrimEnd();                  
+                  OE_LogWriter.OE_LogInfo(string.Format("Expiry Date:{0}",validityNotAfter));
+                  expiryDate = DateTime.ParseExact(validityNotAfter, "yyyy'-'MM'-'dd'T'HH':'mm':'ss.fffK",System.Globalization.CultureInfo.InvariantCulture);
+
+                }
+            //  DateTime dt= DateTime.ParseExact(expiration,"MMM dd HH:ss yyyy 'GMT'",CultureInfo.InvariantCulture);
+            }
+    
+    //Insert into DB
+      if(serialNumber!="")
+    {
+        string q=string.Format("[usp_Ins_Upd_OE_NMIC_Cisco_Certificate] {0},'{1}','{2}','{3}','{4}','{5}','{6}','{7}'",serverID,dN,expiryDate,issuer,subjectKeyIdentifier,serialNumber,HostName,validityNotAfter);
+         OE_LogWriter.OE_LogInfo(string.Format("quesry: {0}",q));
+        db.OE_ExecuteNonQuery(string.Format("[usp_Ins_Upd_OE_NMIC_Cisco_Certificate] {0},'{1}','{2}','{3}','{4}','{5}','{6}','{7}'",serverID,dN,expiryDate,issuer,subjectKeyIdentifier,serialNumber,HostName,validityNotAfter));
+    }
+   }
+     catch(Exception E) 
+    {
+         OE_LogWriter.OE_LogError("Failed to read and cisco certificate in GetCertDetail()",E);
+    }
+    }
+    }
+    }
+    catch(Exception EE)
+    {
+        string error=EE.Message;
+        db.OE_ExecuteNonQuery("INSERT INTO OE_Certificate_ServerException(AssetID,AssetName,ExceptionReason,ServerType) VALUES (serverID,HostName,error,'Cisco')");
+
+         OE_LogWriter.OE_LogError(string.Format("Failed to get certificate in GetCertDetail() :{0}",error),EE);
+    }
+ 
+}
+
+
+
+

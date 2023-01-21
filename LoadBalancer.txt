@@ -1,0 +1,196 @@
+public object loadbalancerdetails(string strcmd,dynamic serviceAcc) {
+
+string userName=serviceAcc.UserName;
+string passWord=serviceAcc.Password;
+
+//strcmd="list sys crypto cert all";
+
+OE_LogWriter.OE_LogInfo(string.Format("Started getting LoadBalancer Certificate"));
+string con = GetCommonValues.GetValue(System.Configuration.ConfigurationManager.AppSettings["ConnectionString"].ToString());
+
+OE_DBFunctions db = new OE_DBFunctions(con, DatabaseTypes.MSSQL);
+
+DataTable dt=null;
+string AssetName = string.Empty;
+int ID = 0;
+try{
+ dt = db.OE_GetDataTable(string.Format("[usp_get_OE_GetAssetDetails] {0},'{1}'",2,"F5"));
+
+                if(dt != null && dt.Rows.Count > 0)
+                {
+                    foreach(DataRow  dr in dt.Rows)
+                    {
+                         AssetName = dr["AssetName"].ToString();
+                         ID = int.Parse(dr["ID"].ToString());
+                         db.OE_ExecuteNonQuery("UPDATE OE_Certificate SET isDeleted=1 WHERE AssetID="+ID);
+                         
+                         OE_LogWriter.OE_LogInfo(string.Format("Started getting LoadBalancer Certificate for he server {0}",AssetName));
+                         GetCertDetail(ID,AssetName, userName, passWord, strcmd,db);
+                    }
+                }
+}
+catch(Exception Ex)
+{
+    string error=Ex.Message;
+     OE_LogWriter.OE_LogError(string.Format("Failed to get LaodBalancer certificate in loadbalancerdetails(): {0} ",error),Ex);
+}
+
+return "";
+
+
+}
+
+
+
+public void GetCertDetail(int serverID,string HostName,string userName,string passWord,string strCmd,OE_DBFunctions db) 
+{
+    try{
+    SshKeyboardInteractiveExecution interactiveConnect = new SshKeyboardInteractiveExecution(HostName, userName, passWord);
+//OE_LogWriter.OE_LogInfo(string.Format("Connecting to LoadBalancer"));
+string Output = interactiveConnect.ExecuteCommand(strCmd);
+ OE_LogWriter.OE_LogInfo("Connecting to server");
+
+
+string commonName=string.Empty;
+string expiration=string.Empty;
+string fingerPrint=string.Empty;
+string issuer= string.Empty;
+string organization= string.Empty;
+//string[] eDate =null;
+ DateTime expiryDate=System.DateTime.Now;
+string[] opLineArray=null;
+
+    
+
+string[] allCertDetails = Output.Split(new string[] {"sys crypto cert"}, StringSplitOptions.None);
+
+foreach(string cert in  allCertDetails)
+{
+    opLineArray=null;
+    if(cert!="")
+    {
+   try{
+     opLineArray=cert.Split('\n');
+   // OE_LogWriter.OE_LogInfo(string.Format("Detailss  :{0}",cert));
+    //foreach line check if the starting is from the strings in key array
+    foreach(string line in opLineArray)
+    {    
+               
+        //Checking if the line contains key
+        if(line.Contains("common-name"))
+        {
+           //  OE_LogWriter.OE_LogInfo(string.Format(commonName));
+            commonName = line.Replace("common-name","").TrimStart();
+        }
+        else if(line.Contains("expiration"))
+        {     
+            expiration = line.Replace("expiration","").TrimStart().Replace("  "," ");
+            // OE_LogWriter.OE_LogInfo(string.Format("expiration: {0}",expiration));    
+             expiryDate = DateTime.ParseExact(expiration, "MMM %d HH:mm:ss yyyy 'GMT'",System.Globalization.CultureInfo.InvariantCulture);
+          //   OE_LogWriter.OE_LogInfo(string.Format("expiration1: {0}",expiryDate)); 
+
+        }
+         else if(line.Contains("issuer CN="))
+        {
+            issuer = line.Replace("issuer","").TrimStart();
+        }
+         else if(line.Contains("fingerprint"))
+        {
+            fingerPrint = line.Replace("fingerprint","").TrimStart();
+           // OE_LogWriter.OE_LogInfo(string.Format("fingerprint: {0}",fingerPrint));
+        }
+         else if(line.Contains("organization"))
+        {
+            organization = line.Replace("organization","").TrimStart();           
+        }
+      
+    }
+    
+    //Insert into DB
+    if(!(String.IsNullOrEmpty(fingerPrint)))
+    {
+       // string q=string.Format("[usp_Ins_Upd_OE_NMIC_F5_Certificate] {0},'{1}','{2}','{3}','{4}','{5}','{6}','{7}'",serverID,commonName,expiryDate,issuer,organization,fingerPrint,HostName,expiration);
+        //  OE_LogWriter.OE_LogInfo(string.Format("quesry: {0}",q));
+        db.OE_ExecuteNonQuery(string.Format("[usp_Ins_Upd_OE_NMIC_F5_Certificate] {0},'{1}','{2}','{3}','{4}','{5}','{6}','{7}'",serverID,commonName,expiryDate,issuer,organization,fingerPrint,HostName,expiration));
+    }
+   }
+     catch(Exception E)
+    {
+         OE_LogWriter.OE_LogError("Failed to read and store loadbalancer certificate in GetCertDetail()",E);
+    }
+    }
+    }
+    }
+    catch(Exception EE)
+    {
+        string error=EE.Message;
+        db.OE_ExecuteNonQuery("INSERT INTO OE_Certificate_ServerException(AssetID,AssetName,ExceptionReason,ServerType) VALUES (serverID,HostName,error,'F5')");
+        OE_LogWriter.OE_LogError(string.Format("Failed to get certificate in GetCertDetail() :{0}",error),EE);
+         
+    }
+ 
+}
+ public class SshKeyboardInteractiveExecution
+    {
+        string ServerName;
+        int Port;
+        string UserName;
+        string Password;
+
+        SshClient sshClient = null;
+
+        public SshKeyboardInteractiveExecution(string servername, string username, string password, int port = 22)
+        {
+            ServerName = servername;
+            Port = port;
+            UserName = username;
+            Password = password;
+
+            InitializeKeyboardInteractiveAuthentication();
+        }
+
+        //Identifies type of prompt is Keyboard-Interactive
+        void HandleKeyEvent(object sender, Renci.SshNet.Common.AuthenticationPromptEventArgs e)
+        {
+            foreach (Renci.SshNet.Common.AuthenticationPrompt prompt in e.Prompts)
+            {
+                if (prompt.Request.IndexOf("Password:", StringComparison.InvariantCultureIgnoreCase) != -1)
+                {
+                    prompt.Response = Password;
+                }
+            }
+        }
+        void InitializeKeyboardInteractiveAuthentication()
+        {
+            KeyboardInteractiveAuthenticationMethod kauth = new KeyboardInteractiveAuthenticationMethod(UserName);
+            PasswordAuthenticationMethod pauth = new PasswordAuthenticationMethod(UserName, Password);
+
+            kauth.AuthenticationPrompt += new EventHandler<Renci.SshNet.Common.AuthenticationPromptEventArgs>(HandleKeyEvent);
+
+            ConnectionInfo connectionInfo = new ConnectionInfo(ServerName, Port, UserName, pauth, kauth);
+             sshClient = new SshClient(connectionInfo);
+        }
+		
+		 public string ExecuteCommand(string command)
+        {
+            string retValue = string.Empty;
+            SshCommand outPut = null;
+
+            if (sshClient != null)
+            {
+                sshClient.Connect();
+
+              
+
+                outPut = sshClient.RunCommand(command);
+
+                sshClient.Disconnect();
+            }
+
+            if (outPut != null)
+                retValue = outPut.Result;
+
+            return retValue;
+        }
+    
+    }

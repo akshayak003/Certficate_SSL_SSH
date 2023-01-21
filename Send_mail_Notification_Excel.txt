@@ -1,0 +1,229 @@
+public object certdetails(string SMTP,string toMailID,string fromMailID) {
+try
+            
+            {
+                DataTable dt = null;
+                DataTable dt1 = null;
+                DataTable dt2 = null;
+                DataTable dt3 = null;
+                DataTable dt4 = null;
+                DataTable dt5 = null;
+                DataTable dt6 = null;
+                DataTable dt7 = null;
+                DataTable dt8 = null;
+                DataTable dt9 = null;
+                DataTable dt10 = null;
+                DataTable dt11 = null;
+                DataTable dt12 = null;
+                DataTable dt13 = null;
+                DataTable dt14 = null;
+                DataTable dt15 = null;
+                DataTable dt16 = null;
+                int notificationID = 0;
+                int groupID = 0;
+                string notificationName = string.Empty;
+                int MinDays = 0;
+                int MaxDays = 0;        
+                OE_LogWriter.OE_LogInfo("Certdetails execution started");
+                string fileName=string.Empty;
+                string certName = string.Empty;
+               // int certID = 0, AssetID = 0;
+               string ExpiryDate = string.Empty;
+                string CIName = string.Empty;
+                string subject = string.Empty;
+               string emailTemplate = string.Empty;
+                string IssuedBy = string.Empty;
+               string serialNumber = string.Empty;
+              
+                OE_LogWriter.OE_LogInfo("Fetching the Data from DataBase");
+                string con = GetCommonValues.GetValue(System.Configuration.ConfigurationManager.AppSettings["ConnectionString"].ToString());
+                
+                //OE_LogWriter.OE_LogInfo("Certificate Details");
+                OE_DBFunctions db = new OE_DBFunctions(con, DatabaseTypes.MSSQL);                
+                dt = db.OE_GetDataTable("[usp_Get_OE_Certificate_Notification_Detail]");
+                if(dt != null && dt.Rows.Count > 0)
+                {
+                    foreach(DataRow  dr in dt.Rows)
+                    {
+                         notificationID = int.Parse(dr["NotificationID"].ToString());
+                         groupID = int.Parse(dr["GroupID"].ToString());
+                         notificationName = dr["NotificationName"].ToString().Trim();
+                         MinDays = int.Parse(dr["MinDays"].ToString());
+                         MaxDays = int.Parse(dr["MaxDays"].ToString());
+                         
+                       // OE_LogWriter.OE_LogInfo("Fetching Notification Executed");
+                        if(notificationID == 1)
+                        {
+                             dt1= db.OE_GetDataTable(string.Format("[usp_Get_OE_Certificate_Detail_Excel] {0},{1},{2},{3}", groupID, MinDays, MaxDays, notificationID));
+                        }
+                        else if(notificationID == 2)
+                        {
+                            dt2= db.OE_GetDataTable(string.Format("[usp_Get_OE_Certificate_Detail_Excel] {0},{1},{2},{3}", groupID, MinDays, MaxDays, notificationID));
+
+                        }
+                        else if (notificationID == 3)
+                        {
+                            dt3= db.OE_GetDataTable(string.Format("[usp_Get_OE_Certificate_Detail_Excel] {0},{1},{2},{3}", groupID, MinDays, MaxDays, notificationID));
+
+                        }
+                        else if (notificationID == 4)
+                        {
+                            dt4= db.OE_GetDataTable(string.Format("[usp_Get_OE_Certificate_Detail_Excel] {0},{1},{2},{3}", groupID, MinDays, MaxDays, notificationID));
+
+                        }
+                         else if (notificationID == 5)
+                        {
+                            dt5= db.OE_GetDataTable(string.Format("[usp_Get_OE_Certificate_Detail_Excel] {0},{1},{2},{3}", groupID, MinDays, MaxDays, notificationID));
+
+                        }
+                         else if (notificationID == 6)
+                        {
+                            dt6= db.OE_GetDataTable(string.Format("[usp_Get_OE_Certificate_Detail_Excel] {0},{1},{2},{3}", groupID, MinDays, MaxDays, notificationID));
+
+                        }
+                         else if (notificationID == 7)
+                        {
+                            dt7= db.OE_GetDataTable(string.Format("[usp_Get_OE_Certificate_Detail_Excel] {0},{1},{2},{3}", groupID, MinDays, MaxDays, notificationID));
+
+                        }
+                         else if (notificationID == 8)
+                        {
+                            dt8= db.OE_GetDataTable(string.Format("[usp_Get_OE_Certificate_Detail_Excel] {0},{1},{2},{3}", groupID, MinDays, MaxDays, notificationID));
+
+                        }
+                         else if (notificationID == 9)
+                        {
+                            dt9= db.OE_GetDataTable(string.Format("[usp_Get_OE_Certificate_Detail_Excel] {0},{1},{2},{3}", groupID, MinDays, MaxDays, notificationID));
+
+                        }
+                         else if (notificationID == 10)
+                        {
+                            dt10= db.OE_GetDataTable(string.Format("[usp_Get_OE_Certificate_Detail_Excel] {0},{1},{2},{3}", groupID, MinDays, MaxDays, notificationID));
+
+                        }
+                         else if (notificationID == 11)
+                        {
+                            dt11= db.OE_GetDataTable(string.Format("[usp_Get_OE_Certificate_Detail_Excel] {0},{1},{2},{3}", groupID, MinDays, MaxDays, notificationID));
+
+                        }
+                         else if (notificationID == 12)
+                        {
+                            dt12= db.OE_GetDataTable(string.Format("[usp_Get_OE_Certificate_Detail_Excel] {0},{1},{2},{3}", groupID, MinDays, MaxDays, notificationID));
+
+                        }
+                         else if (notificationID == 17)
+                        {
+                            dt13= db.OE_GetDataTable(string.Format("[usp_Get_OE_Certificate_Detail_Excel] {0},{1},{2},{3}", groupID, MinDays, MaxDays, notificationID));
+
+                        }
+                         else if (notificationID == 18)
+                        {
+                            dt14= db.OE_GetDataTable(string.Format("[usp_Get_OE_Certificate_Detail_Excel] {0},{1},{2},{3}", groupID, MinDays, MaxDays, notificationID));
+
+                        }
+                         else if (notificationID == 19)
+                        {
+                            dt15= db.OE_GetDataTable(string.Format("[usp_Get_OE_Certificate_Detail_Excel] {0},{1},{2},{3}", groupID, MinDays, MaxDays, notificationID));
+
+                        }
+                         else if (notificationID == 20)
+                        {
+                            dt16= db.OE_GetDataTable(string.Format("[usp_Get_OE_Certificate_Detail_Excel] {0},{1},{2},{3}", groupID, MinDays, MaxDays, notificationID));
+
+                        }
+                           OE_LogWriter.OE_LogInfo("Fetching certificate details completed");
+                           fileName= ExportDataSetToExcel(dt1,dt2,dt3,dt4,dt5,dt6,dt7,dt8,dt9,dt10,dt11,dt12,dt13,dt14,dt15,dt16);
+                    }
+                    if(!(string.IsNullOrEmpty(fileName)))
+                    {
+                         System.Net.Mail.MailAddress sender = new System.Net.Mail.MailAddress(fromMailID);
+                         List<string> toList = new List<string> { };
+                         toList = toMailID.Split(new char[] { ';' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+                         List<string> ccList = new List<string> { };
+                     //  ccList=ccEmailId.Split(new char[] { ';' }, StringSplitOptions.RemoveEmptyEntries).ToList();
+                         List<string> bccList = new List<string> { };
+                         List<string> fileList = new List<string> { };
+                         fileList.Add(fileName);
+                         subject=string.Format("Certificate expring details as on  {0}",DateTime.Now.ToString("dd/MM/yyyy"));
+                         emailTemplate=string.Format("Hi, <p> Please find the attached Certificate expiry details as on: #Date# </p><p>This is auto generated email.please dont reply.</p> <p> Thanks </p> <p>OneEngine Team</p>");
+                         emailTemplate=emailTemplate.Replace("#Date#",DateTime.Now.ToString("dd/MM/yyyy"));
+                         OE_SendEmail.OE_SendMail(sender, toList, ccList, bccList, SMTP, subject, emailTemplate, fileList);
+                   }
+                    else
+                    {
+                         OE_LogWriter.OE_LogInfo("Excel file not found");
+                    }
+                    
+                }
+            }
+                    
+             catch (Exception ex)
+            {
+                   throw ex;
+                   OE_LogWriter.OE_LogError("Failed to get certificate details",ex);
+            }
+
+return "";
+}
+private string ExportDataSetToExcel(DataTable dt1,DataTable dt2, DataTable dt3, DataTable dt4,DataTable dt5,DataTable dt6,DataTable dt7,DataTable dt8,DataTable dt9,DataTable dt10,DataTable dt11,DataTable dt12,DataTable dt13,DataTable dt14,DataTable dt15,DataTable dt16) 
+        {
+            
+        string file = "C:\\TCS\\ExcelFiles" + string.Format("\\ExpiringCertificateDetails_{0}.xlsx", DateTime.Now.ToString("yyyyMMdd"));
+        OE_LogWriter.OE_LogInfo("file path: "+file);
+        using (ClosedXML.Excel.XLWorkbook wb = new ClosedXML.Excel.XLWorkbook())
+		{
+		    if(dt1!=null){
+			wb.Worksheets.Add(dt1,"L1 Windows Notification");  
+		    }
+		    if(dt2!=null){
+            wb.Worksheets.Add(dt2, "L2 Windows Notification");
+		    }
+		    if(dt3!=null){
+            wb.Worksheets.Add(dt3, "L3 Windows Notification"); 
+		    }
+		    if(dt4!=null){
+            wb.Worksheets.Add(dt4, "L4 Windows Notification");
+		    }
+		    if(dt5!=null){
+            wb.Worksheets.Add(dt5, "L1 Network Notification");
+		    }
+		    if(dt6!=null){
+            wb.Worksheets.Add(dt6, "L2 Network Notification");
+		    }
+		    if(dt7!=null){
+            wb.Worksheets.Add(dt7, "L3 Network Notification");
+		    }
+		    if(dt8!=null){
+            wb.Worksheets.Add(dt8, "L4 Network Notification");
+		    }
+            if(dt9!=null){
+            wb.Worksheets.Add(dt9, "L1 Linux Notification");
+            }
+            if(dt10!=null){
+            wb.Worksheets.Add(dt10, "L2 Linux Notification");
+            }
+            if(dt11!=null){
+            wb.Worksheets.Add(dt11, "L3 Linux Notification");
+            }
+            if(dt12!=null){
+            wb.Worksheets.Add(dt12, "L4 Linux Notification");
+            }
+             if(dt13!=null){
+            wb.Worksheets.Add(dt13, "L1 Storage Notification");
+            }
+            if(dt14!=null){
+            wb.Worksheets.Add(dt14, "L2 Storage Notification");
+            }
+            if(dt15!=null){
+            wb.Worksheets.Add(dt15, "L3 Storage Notification");
+            }
+             if(dt16!=null){
+            wb.Worksheets.Add(dt16, "L4 Storage Notification");
+            }
+            //wb.Worksheets.FirstOrDefault().Name = "ws1";
+            wb.Style.Alignment.Horizontal = ClosedXML.Excel.XLAlignmentHorizontalValues.Center;
+            wb.Style.Font.Bold = true;
+            wb.SaveAs(file);           
+		}
+		return file;
+        }
